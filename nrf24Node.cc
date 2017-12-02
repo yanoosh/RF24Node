@@ -82,6 +82,18 @@ NAN_METHOD(Write){
   info.GetReturnValue().Set(ok);
 }
 
+NAN_METHOD(WriteBuffer){
+  if (info.Length() < 3)
+      return Nan::ThrowTypeError("Should pass Receiver Node Id, Buffer and buffer size");
+
+  uint16_t otherNode = info[0]->Uint32Value();
+  uint16_t size = info[2]->Uint32Value();
+  uint8_t * buffer = (uint8_t*)node::Buffer::Data(info[1]->ToObject());
+
+  RF24NetworkHeader header(otherNode);
+  bool ok = network.write(header, buffer, size);
+  info.GetReturnValue().Set(ok);
+}
 
 void keepListen(void *arg) {
 	while(1)
@@ -158,6 +170,9 @@ NAN_MODULE_INIT(Init){
 
     Nan::Set(target, New<String>("write").ToLocalChecked(),
         GetFunction(New<FunctionTemplate>(Write)).ToLocalChecked());        
+
+    Nan::Set(target, New<String>("writeBuffer").ToLocalChecked(),
+        GetFunction(New<FunctionTemplate>(WriteBuffer)).ToLocalChecked());
 
     Nan::Set(target, New<String>("close").ToLocalChecked(),
         GetFunction(New<FunctionTemplate>(Close)).ToLocalChecked()); 
