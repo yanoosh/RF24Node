@@ -16,12 +16,18 @@ rf24.begin(90,00);
 rf24.printDetails();
 rf24.write(1,"Ack");
 
-rf24.readAsync(function(from, data){
-    console.log(from);
-    console.log(data);
-    rf24.write(1,"Ack");
-});
+const onMessage = function(from, data){
+    console.log("resonse", from);
+    // console.log(data);
+    // rf24.write(1,"Ack");
+}
 
+const onFinish = () => {
+  console.log("listening finished")
+}
+
+rf24.readAsync(onMessage, onFinish, 1000.1);
+console.log('start listening')
 
 process.on('SIGINT', exitHandler);
 

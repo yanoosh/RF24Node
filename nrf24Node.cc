@@ -69,14 +69,14 @@ NAN_METHOD(Begin){
 
 NAN_METHOD(Write){
   if (info.Length() < 2)
-      return Nan::ThrowTypeError("Should pass Receiver Node Id and Message");  
+      return Nan::ThrowTypeError("Should pass Receiver Node Id and Message");
 
   uint16_t otherNode = info[0]->Uint32Value();
   v8::String::Utf8Value message(info[1]->ToString());
   std::string msg = std::string(*message);
   payload_t payload;
   strncpy(payload.msg, msg.c_str(),24);
-  
+
   RF24NetworkHeader header(otherNode);
   bool ok = network.write(header,&payload, sizeof(payload));
   info.GetReturnValue().Set(ok);
@@ -96,45 +96,96 @@ NAN_METHOD(WriteBuffer){
 }
 
 void keepListen(void *arg) {
-	while(1)
-	{
-		network.update();
-		while (network.available()) {     // Is there anything ready for us?
-			  RF24NetworkHeader header;
-   			payload_t payload;
-  			network.read(header,&payload,sizeof(payload));
-
-        payload_pi localPayload;
-        localPayload.fromNode = header.from_node;
-        strncpy(localPayload.msg, payload.msg, 24);
-        async->data = (void *) &localPayload;
-        uv_async_send(async);
-		}
-		delay(2000);
-	}
+	// while(1)
+	// {
+	// 	network.update();
+	// 	while (network.available()) {     // Is there anything ready for us?
+	// 		  RF24NetworkHeader header;
+  //  			payload_t payload;
+  // 			network.read(header,&payload,sizeof(payload));
+  //
+  //       payload_pi localPayload;
+  //       localPayload.fromNode = header.from_node;
+  //       strncpy(localPayload.msg, payload.msg, 24);
+  //       async->data = (void *) &localPayload;
+  //       uv_async_send(async);
+	// 	}
+	// 	delay(2000);
+	// }
 }
 
 void doCallback(uv_async_t *handle){
-  payload_pi* p = (struct payload_pi*)handle->data;
-  v8::Handle<v8::Value> argv[2] = {
-      Nan::New(p->fromNode),
-      Nan::New(p->msg).ToLocalChecked()
+  // payload_pi* p = (struct payload_pi*)handle->data;
+  // v8::Handle<v8::Value> argv[2] = {
+  //     Nan::New(p->fromNode),
+  //     Nan::New(p->msg).ToLocalChecked()
+  //   };
+  // cbPeriodic->Call(2, argv);
+}
+
+class ProgressWorker : public AsyncProgressWorker {
+ public:
+  ProgressWorker(Callback *onMessage, Callback *onFinish, int milliseconds)
+    : AsyncProgressWorker(onFinish), progress(onMessage), milliseconds(milliseconds) {}
+
+  ~ProgressWorker() {
+    delete progress;
+  }
+
+  void Execute (const AsyncProgressWorker::ExecutionProgress& progress) {
+    for (int i = 0; i < 10; ++i) {
+      progress.Send(reinterpret_cast<const char*>(&i), sizeof(int));
+      delay(milliseconds);
+    }
+  }
+
+  void HandleProgressCallback(const char *data, size_t count) {
+    Nan::HandleScope scope;
+
+    v8::Local<v8::Value> argv[] = {
+        Nan::CopyBuffer(const_cast<char*>(data), count).ToLocalChecked()
     };
-  cbPeriodic->Call(2, argv);
-}  
+    progress->Call(1, argv);
+  }
+
+ private:
+  Callback *progress;
+  int milliseconds;
+};
 
 NAN_METHOD(ReadAsync){
-  if (info.Length() <= 0)
-    return Nan::ThrowTypeError("Should pass a callback function");
-  if (info.Length() > 0 && !info[0]->IsFunction())
-      return Nan::ThrowTypeError("Provided callback must be a function");
+  const int ON_MESSAGE = 0;
+  const int ON_FINISH = 1;
+  const int DELAY = 2;
+  int delay = 200;
 
-  cbPeriodic = new Nan::Callback(info[0].As<Function>());
-  async = (uv_async_t*)malloc(sizeof(uv_async_t));
-  uv_async_init(uv_default_loop(), async, doCallback);
-  uv_thread_t id;
-  uv_thread_create(&id, keepListen, NULL);
-  uv_run(uv_default_loop(), UV_RUN_DEFAULT);
+  if (info.Length() < 1) {
+    return Nan::ThrowTypeError("Should pass at least 2 arguments: onMessage, onFinish[, delay]");
+  }
+  if (!info[ON_MESSAGE]->IsFunction()) {
+    return Nan::ThrowTypeError("onMessage should be a function");
+  }
+
+  if (!info[ON_FINISH]->IsFunction()) {
+    return Nan::ThrowTypeError("onFinish should be a function");
+  }
+
+  if (info.Length() > 2) {
+    if (!info[DELAY]->IsNumber()) {
+      return Nan::ThrowTypeError("delay should be a number");
+    }
+
+    if (info[DELAY]->Uint32Value() < 200) {
+      return Nan::ThrowTypeError("delay should be a least 200");
+    }
+    delay = info[DELAY]->Uint32Value();
+  }
+
+  AsyncQueueWorker(new ProgressWorker(
+    new Nan::Callback(info[ON_MESSAGE].As<Function>()),
+    new Nan::Callback(info[ON_FINISH].As<Function>()),
+    delay
+  ));
 }
 
 NAN_METHOD(PrintDetails) {
@@ -163,22 +214,22 @@ NAN_MODULE_INIT(Init){
         GetFunction(New<FunctionTemplate>(Available)).ToLocalChecked());
 
     Nan::Set(target, New<String>("read").ToLocalChecked(),
-        GetFunction(New<FunctionTemplate>(Read)).ToLocalChecked());         
+        GetFunction(New<FunctionTemplate>(Read)).ToLocalChecked());
 
     Nan::Set(target, New<String>("readAsync").ToLocalChecked(),
         GetFunction(New<FunctionTemplate>(ReadAsync)).ToLocalChecked());
 
     Nan::Set(target, New<String>("write").ToLocalChecked(),
-        GetFunction(New<FunctionTemplate>(Write)).ToLocalChecked());        
+        GetFunction(New<FunctionTemplate>(Write)).ToLocalChecked());
 
     Nan::Set(target, New<String>("writeBuffer").ToLocalChecked(),
         GetFunction(New<FunctionTemplate>(WriteBuffer)).ToLocalChecked());
 
     Nan::Set(target, New<String>("close").ToLocalChecked(),
-        GetFunction(New<FunctionTemplate>(Close)).ToLocalChecked()); 
+        GetFunction(New<FunctionTemplate>(Close)).ToLocalChecked());
 
     Nan::Set(target, New<String>("begin").ToLocalChecked(),
-        GetFunction(New<FunctionTemplate>(Begin)).ToLocalChecked());                           
+        GetFunction(New<FunctionTemplate>(Begin)).ToLocalChecked());
 }
 
 NODE_MODULE(nrf24Node, Init)
