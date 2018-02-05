@@ -1,8 +1,15 @@
-var rf24 = require('./build/Release/nrf24Node.node');
+var rf24 = require('./index.js');
 
-// rf24.beginRadio();
-// rf24.beginNetwork(90,00);
-// rf24.printDetails();
+rf24.begin(90, 0);
+rf24.printDetails();
+var i = 0;
+
+setInterval(function() {
+  const write = Buffer.from([i++, 1, 2])
+  console.log("Send: ", write)
+  rf24.writeBuffer(1, write, write.length)
+}, 2000)
+
 // while(true){
 //     rf24.update();
 //     var status = rf24.available();
@@ -12,10 +19,10 @@ var rf24 = require('./build/Release/nrf24Node.node');
 //     }
 // }
 
-rf24.begin(90,00);
-rf24.printDetails();
-rf24.write(1,"Ack");
-
+// rf24.begin(90,00);
+// rf24.printDetails();
+// rf24.write(1,"Ack");
+//
 const onMessage = function(from, data){
     console.log("resonse", from);
     // console.log(data);
@@ -28,11 +35,15 @@ const onFinish = () => {
 
 rf24.readAsync(onMessage, onFinish, 1000.1);
 console.log('start listening')
-
+//
+// setInterval(function() {
+//   console.log("working!")
+// }, 1000)
+//
 process.on('SIGINT', exitHandler);
 
 function exitHandler() {
-    process.exit();
-    rf24.write(1,"Parent ending");
-    rf24.close();
+  rf24.write(1,"Parent ending");
+  rf24.close();
+  process.exit();
 }

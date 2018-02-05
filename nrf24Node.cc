@@ -13,8 +13,6 @@ using namespace v8;
 RF24 radio(RPI_V2_GPIO_P1_15, BCM2835_SPI_CS0, BCM2835_SPI_SPEED_8MHZ);
 RF24Network network(radio);
 
-Nan::Callback *cbPeriodic;
-uv_async_t* async;
 
 struct payload_t {                  // Structure of our payload
   char msg[24];
@@ -28,24 +26,24 @@ struct payload_pi {
 //--------------------------------------------------------------------------
 //Below functions are just replica of RF24Network functions.
 //No need to use these functions in you app.
-NAN_METHOD(BeginRadio) {
-  radio.begin();
-}
-
-NAN_METHOD(BeginNetwork){
-  uint16_t channel = info[0]->Uint32Value();
-  uint16_t thisNode = info[0]->Uint32Value();
-  network.begin(channel,thisNode);
-}
-
-NAN_METHOD(Update) {
-  network.update();
-}
-
-NAN_METHOD(Available) {
-  v8::Local<v8::Boolean> status = Nan::New(network.available());
-  info.GetReturnValue().Set(status);
-}
+// NAN_METHOD(BeginRadio) {
+//   radio.begin();
+// }
+//
+// NAN_METHOD(BeginNetwork){
+//   uint16_t channel = info[0]->Uint32Value();
+//   uint16_t thisNode = info[0]->Uint32Value();
+//   network.begin(channel,thisNode);
+// }
+//
+// NAN_METHOD(Update) {
+//   network.update();
+// }
+//
+// NAN_METHOD(Available) {
+//   v8::Local<v8::Boolean> status = Nan::New(network.available());
+//   info.GetReturnValue().Set(status);
+// }
 
 NAN_METHOD(Read) {
   payload_t payload;
@@ -133,17 +131,38 @@ class ProgressWorker : public AsyncProgressWorker {
   }
 
   void Execute (const AsyncProgressWorker::ExecutionProgress& progress) {
-    for (int i = 0; i < 10; ++i) {
-      progress.Send(reinterpret_cast<const char*>(&i), sizeof(int));
-      delay(milliseconds);
-    }
+    int payloadSize = 3;
+    char *payload;
+  	while(run)
+  	{
+  		network.update();
+  		while (network.available()) {     // Is there anything ready for us?
+  			  RF24NetworkHeader header;
+          payload = (char *)malloc(payloadSize);
+    			network.read(header, payload, payloadSize);
+          // //
+          // // // payload_pi localPayload;
+          // // // localPayload.fromNode = header.from_node;
+          // // // strncpy(localPayload.msg, payload.msg, 24);
+          progress.Send(reinterpret_cast<const char*>(payload), payloadSize);
+  		}
+  		delay(milliseconds);
+  	}
+    // for (int i = 0; i < 10; ++i) {
+    //   progress.Send(reinterpret_cast<const char*>(&i), sizeof(int));
+    //   delay(milliseconds);
+    // }
+  }
+
+  void Stop() {
+    run = false;
   }
 
   void HandleProgressCallback(const char *data, size_t count) {
     Nan::HandleScope scope;
 
     v8::Local<v8::Value> argv[] = {
-        Nan::CopyBuffer(const_cast<char*>(data), count).ToLocalChecked()
+        Nan::NewBuffer(const_cast<char*>(data), count).ToLocalChecked()
     };
     progress->Call(1, argv);
   }
@@ -151,7 +170,10 @@ class ProgressWorker : public AsyncProgressWorker {
  private:
   Callback *progress;
   int milliseconds;
+  bool run = true;
 };
+
+ProgressWorker *readWorker;
 
 NAN_METHOD(ReadAsync){
   const int ON_MESSAGE = 0;
@@ -181,11 +203,13 @@ NAN_METHOD(ReadAsync){
     delay = info[DELAY]->Uint32Value();
   }
 
-  AsyncQueueWorker(new ProgressWorker(
+  readWorker = new ProgressWorker(
     new Nan::Callback(info[ON_MESSAGE].As<Function>()),
     new Nan::Callback(info[ON_FINISH].As<Function>()),
     delay
-  ));
+  );
+
+  AsyncQueueWorker(readWorker);
 }
 
 NAN_METHOD(PrintDetails) {
@@ -193,25 +217,31 @@ NAN_METHOD(PrintDetails) {
 }
 
 NAN_METHOD(Close){
-  uv_close((uv_handle_t*) &async, NULL);
+  if (readWorker != NULL) {
+    readWorker->Stop();
+  }
 }
 
 
 NAN_MODULE_INIT(Init){
-    Nan::Set(target, New<String>("beginRadio").ToLocalChecked(),
-        GetFunction(New<FunctionTemplate>(BeginRadio)).ToLocalChecked());
 
-    Nan::Set(target, New<String>("beginNetwork").ToLocalChecked(),
-        GetFunction(New<FunctionTemplate>(BeginNetwork)).ToLocalChecked());
+    Nan::Set(target, New<String>("begin").ToLocalChecked(),
+        GetFunction(New<FunctionTemplate>(Begin)).ToLocalChecked());
 
-    Nan::Set(target, New<String>("update").ToLocalChecked(),
-        GetFunction(New<FunctionTemplate>(Update)).ToLocalChecked());
+    // Nan::Set(target, New<String>("beginRadio").ToLocalChecked(),
+    //     GetFunction(New<FunctionTemplate>(BeginRadio)).ToLocalChecked());
+    //
+    // Nan::Set(target, New<String>("beginNetwork").ToLocalChecked(),
+    //     GetFunction(New<FunctionTemplate>(BeginNetwork)).ToLocalChecked());
+    //
+    // Nan::Set(target, New<String>("update").ToLocalChecked(),
+    //     GetFunction(New<FunctionTemplate>(Update)).ToLocalChecked());
 
     Nan::Set(target, New<String>("printDetails").ToLocalChecked(),
         GetFunction(New<FunctionTemplate>(PrintDetails)).ToLocalChecked());
 
-    Nan::Set(target, New<String>("available").ToLocalChecked(),
-        GetFunction(New<FunctionTemplate>(Available)).ToLocalChecked());
+    // Nan::Set(target, New<String>("available").ToLocalChecked(),
+    //     GetFunction(New<FunctionTemplate>(Available)).ToLocalChecked());
 
     Nan::Set(target, New<String>("read").ToLocalChecked(),
         GetFunction(New<FunctionTemplate>(Read)).ToLocalChecked());
@@ -227,9 +257,6 @@ NAN_MODULE_INIT(Init){
 
     Nan::Set(target, New<String>("close").ToLocalChecked(),
         GetFunction(New<FunctionTemplate>(Close)).ToLocalChecked());
-
-    Nan::Set(target, New<String>("begin").ToLocalChecked(),
-        GetFunction(New<FunctionTemplate>(Begin)).ToLocalChecked());
 }
 
 NODE_MODULE(nrf24Node, Init)
