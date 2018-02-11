@@ -7,7 +7,7 @@ var i = 0;
 setInterval(function() {
   const write = Buffer.from([i++, 1, 2])
   console.log("Send: ", write)
-  rf24.writeBuffer(1, write, write.length)
+  rf24.write(1, write, write.length)
 }, 2000)
 
 // while(true){
@@ -24,7 +24,7 @@ setInterval(function() {
 // rf24.write(1,"Ack");
 //
 const onMessage = function(from, data){
-    console.log("resonse", from);
+    console.log("from: ", from);
     // console.log(data);
     // rf24.write(1,"Ack");
 }
@@ -33,7 +33,7 @@ const onFinish = () => {
   console.log("listening finished")
 }
 
-rf24.readAsync(onMessage, onFinish, 1000.1);
+rf24.read(onMessage, onFinish, 1000);
 console.log('start listening')
 //
 // setInterval(function() {
@@ -43,7 +43,6 @@ console.log('start listening')
 process.on('SIGINT', exitHandler);
 
 function exitHandler() {
-  rf24.write(1,"Parent ending");
   rf24.close();
   process.exit();
 }
