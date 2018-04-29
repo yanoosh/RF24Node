@@ -21,6 +21,7 @@ NAN_METHOD(Begin){
   uint16_t thisNode = info[1]->Uint32Value();
 
 	radio.begin();
+	radio.setDataRate(RF24_250KBPS);
 	delay(5);
 	network.begin(channel, thisNode);
 }
@@ -40,35 +41,27 @@ NAN_METHOD(Write){
 
 class ProgressWorker : public AsyncProgressWorker {
  public:
-  ProgressWorker(Callback *onMessage, Callback *onFinish, int milliseconds)
-    : AsyncProgressWorker(onFinish), progress(onMessage), milliseconds(milliseconds) {}
+  ProgressWorker(Callback *onMessage, Callback *onFinish, int payloadSize, int milliseconds)
+    : AsyncProgressWorker(onFinish), progress(onMessage), payloadSize(payloadSize), milliseconds(milliseconds) {}
 
   ~ProgressWorker() {
     delete progress;
   }
 
   void Execute (const AsyncProgressWorker::ExecutionProgress& progress) {
-    int payloadSize = 3;
-    char *payload;
+    char * payload = (char *)malloc(payloadSize);
   	while(run)
   	{
   		network.update();
   		while (network.available()) {     // Is there anything ready for us?
   			  RF24NetworkHeader header;
-          payload = (char *)malloc(payloadSize);
+          memset(payload, 0, payloadSize);
     			network.read(header, payload, payloadSize);
-          // //
-          // // // payload_pi localPayload;
-          // // // localPayload.fromNode = header.from_node;
-          // // // strncpy(localPayload.msg, payload.msg, 24);
           progress.Send(reinterpret_cast<const char*>(payload), payloadSize);
   		}
   		delay(milliseconds);
   	}
-    // for (int i = 0; i < 10; ++i) {
-    //   progress.Send(reinterpret_cast<const char*>(&i), sizeof(int));
-    //   delay(milliseconds);
-    // }
+    free((void *)payload);
   }
 
   void Stop() {
@@ -79,13 +72,14 @@ class ProgressWorker : public AsyncProgressWorker {
     Nan::HandleScope scope;
 
     v8::Local<v8::Value> argv[] = {
-        Nan::NewBuffer(const_cast<char*>(data), count).ToLocalChecked()
+        Nan::CopyBuffer(const_cast<char*>(data), count).ToLocalChecked()
     };
     progress->Call(1, argv);
   }
 
  private:
   Callback *progress;
+  int payloadSize;
   int milliseconds;
   bool run = true;
 };
@@ -95,7 +89,8 @@ ProgressWorker *readWorker;
 NAN_METHOD(Read){
   const int ON_MESSAGE = 0;
   const int ON_FINISH = 1;
-  const int DELAY = 2;
+  const int PAYLOAD_SIZE = 2;
+  const int DELAY = 3;
   int delay = 200;
 
   if (info.Length() < 1) {
@@ -109,13 +104,21 @@ NAN_METHOD(Read){
     return Nan::ThrowTypeError("onFinish should be a function");
   }
 
-  if (info.Length() > 2) {
+  if (!info[PAYLOAD_SIZE]->IsNumber()) {
+    return Nan::ThrowTypeError("payload size should be a number");
+  }
+
+  if (info[PAYLOAD_SIZE]->Uint32Value() < 1) {
+    return Nan::ThrowTypeError("payload size should be at least 1");
+  }
+
+  if (info.Length() > 3) {
     if (!info[DELAY]->IsNumber()) {
       return Nan::ThrowTypeError("delay should be a number");
     }
 
     if (info[DELAY]->Uint32Value() < 200) {
-      return Nan::ThrowTypeError("delay should be a least 200");
+      return Nan::ThrowTypeError("delay should be at least 200");
     }
     delay = info[DELAY]->Uint32Value();
   }
@@ -123,6 +126,7 @@ NAN_METHOD(Read){
   readWorker = new ProgressWorker(
     new Nan::Callback(info[ON_MESSAGE].As<Function>()),
     new Nan::Callback(info[ON_FINISH].As<Function>()),
+    info[PAYLOAD_SIZE]->Uint32Value(),
     delay
   );
 
