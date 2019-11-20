@@ -10,7 +10,7 @@
 using namespace Nan;
 using namespace v8;
 
-RF24 radio(RPI_V2_GPIO_P1_15, BCM2835_SPI_CS0, BCM2835_SPI_SPEED_8MHZ);
+RF24 radio(22, 0);
 RF24Network network(radio);
 
 NAN_METHOD(Begin){

@@ -22,7 +22,7 @@ git clone $RF24GIT/RF24.git RF24
 fi
 echo "=>RF24..."
 cd RF24
-./configure --driver=RPi
+./configure --driver=SPIDEV
 make
 sudo make install
 cd ..
