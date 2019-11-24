@@ -18,7 +18,7 @@ cd rf24libs
 if [ -d RF24 ] ; then
 cd RF24 ; git pull ; cd ..
 else
-git clone $RF24GIT/RF24.git RF24
+git clone $RF24GIT/RF24.git RF24 --branch v1.3.3
 fi
 echo "=>RF24..."
 cd RF24
@@ -30,7 +30,7 @@ echo "=>RF24Network..."
 if [ -d RF24Network ] ; then
 cd RF24Network ; git pull ; cd ..
 else
-git clone $RF24GIT/RF24Network.git RF24Network
+git clone $RF24GIT/RF24Network.git RF24Network --branch v1.0.9
 fi
 cd RF24Network
 make
